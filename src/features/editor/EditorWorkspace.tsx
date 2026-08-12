@@ -2,13 +2,12 @@ import { ArrowLeft, ArrowRight, Camera, FilePlus2, Redo2, RotateCw, Save, Undo2 
 import { useCallback, useEffect, useState } from 'react';
 import { FileImportButton } from '../../components/FileImportButton';
 import { IconButton } from '../../components/IconButton';
-import { importCameraBlob, importFiles, type ImportProgress } from '../import/fileImporter';
+import { importCameraBlobs, importFiles, type ImportProgress } from '../import/fileImporter';
 import { CameraModal } from '../camera/CameraModal';
 import { CompletionPage } from '../completion/CompletionPage';
 import { useProjectEditor } from '../../state/useProjectEditor';
 import { CropEditor } from './CropEditor';
 import { DocumentPreview } from './DocumentPreview';
-import { PageStrip } from './PageStrip';
 import { ToolPanel, type ToolTab } from './ToolPanel';
 
 interface EditorWorkspaceProps {
@@ -48,17 +47,19 @@ export function EditorWorkspace({ projectId, initialCamera, initialFiles, onBack
   }, [editor, handleFiles, initialFiles, initialImportStarted]);
 
   if (!editor) {
-    return <main className="loading-screen"><span className="loader-ring" /> <p>{loadError ?? 'Opening local project'}</p></main>;
+    return (
+      <main className="loading-screen">
+        {!loadError && <span className="loader-ring" />}
+        <p>{loadError ?? 'Opening local project'}</p>
+        {loadError && <button className="button secondary" onClick={onBack}>Back to projects</button>}
+      </main>
+    );
   }
 
   const addCameraShots = async (blobs: Blob[]) => {
     setError(null);
     try {
-      const pages = [];
-      for (let index = 0; index < blobs.length; index += 1) {
-        setBusy({ current: index + 1, total: blobs.length, label: `Cleaning capture ${index + 1}` });
-        pages.push(await importCameraBlob(editor.project.id, blobs[index], editor.pages.length + index));
-      }
+      const pages = await importCameraBlobs(editor.project.id, blobs, editor.pages.length, setBusy);
       editor.addPages(pages);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Captured pages could not be added.');
@@ -68,7 +69,7 @@ export function EditorWorkspace({ projectId, initialCamera, initialFiles, onBack
   };
 
   const goBack = async () => {
-    await editor.flushSave();
+    await editor.flushSave(true);
     onBack();
   };
 
@@ -124,22 +125,6 @@ export function EditorWorkspace({ projectId, initialCamera, initialFiles, onBack
         </section>
       ) : (
         <div className="editor-layout">
-          <div className="pages-column">
-            <div className="pages-column-header"><span>{editor.pages.length} pages</span><button onClick={editor.selectAll}>Select all</button></div>
-            <PageStrip
-              pages={editor.pages}
-              activeId={editor.activeId}
-              selectedIds={editor.selectedIds}
-              onActive={editor.setActive}
-              onToggleSelected={editor.toggleSelected}
-              onReorder={editor.reorder}
-            />
-            <div className="add-page-actions">
-              <button onClick={() => setCameraOpen(true)} title="Scan more pages"><Camera size={18} /><span>Scan</span></button>
-              <FileImportButton compact onFiles={handleFiles} disabled={Boolean(busy)} />
-            </div>
-          </div>
-
           <section className="canvas-area" aria-label="Page editor">
             <div className="canvas-toolbar">
               <span>Page {(editor.pages.findIndex((page) => page.id === editor.activeId) + 1) || 1}</span>
@@ -153,7 +138,14 @@ export function EditorWorkspace({ projectId, initialCamera, initialFiles, onBack
             </div>
           </section>
 
-          <ToolPanel editor={editor} tab={tab} onTab={setTab} />
+          <ToolPanel
+            editor={editor}
+            tab={tab}
+            onTab={setTab}
+            onScan={() => setCameraOpen(true)}
+            onFiles={handleFiles}
+            importDisabled={Boolean(busy)}
+          />
         </div>
       )}
 

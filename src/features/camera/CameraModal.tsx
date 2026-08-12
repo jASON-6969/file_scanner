@@ -2,6 +2,7 @@ import { Camera, Check, ImagePlus, RotateCcw, X, Zap, ZapOff } from 'lucide-reac
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileImportButton } from '../../components/FileImportButton';
 import { IconButton } from '../../components/IconButton';
+import { captureDocumentPhoto, configureDocumentCamera, documentCameraConstraints, setCameraTorch } from './cameraCapture';
 
 interface CameraModalProps {
   onClose: () => void;
@@ -35,8 +36,8 @@ export function CameraModal({ onClose, onComplete, onFallbackFiles }: CameraModa
 
   useEffect(() => {
     let active = true;
-    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
-      .then((stream) => {
+    navigator.mediaDevices?.getUserMedia(documentCameraConstraints)
+      .then(async (stream) => {
         if (!active) {
           stream.getTracks().forEach((track) => track.stop());
           return;
@@ -44,7 +45,7 @@ export function CameraModal({ onClose, onComplete, onFallbackFiles }: CameraModa
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
         const track = stream.getVideoTracks()[0];
-        const capabilities = track.getCapabilities?.() as MediaTrackCapabilities & { torch?: boolean };
+        const capabilities = await configureDocumentCamera(track);
         setTorchAvailable(Boolean(capabilities?.torch));
       })
       .catch(() => setError('Camera access was denied or is unavailable. Use the system camera or choose files instead.'));
@@ -55,19 +56,13 @@ export function CameraModal({ onClose, onComplete, onFallbackFiles }: CameraModa
     };
   }, [stopCamera]);
 
-  const capture = useCallback(() => {
+  const capture = useCallback(async () => {
     const video = videoRef.current;
-    if (!video?.videoWidth) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    context.drawImage(video, 0, 0);
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      setShots((current) => [...current, { blob, url: URL.createObjectURL(blob) }]);
-    }, 'image/jpeg', 0.95);
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!video || !track) return;
+    const blob = await captureDocumentPhoto(video, track);
+    if (!blob) return;
+    setShots((current) => [...current, { blob, url: URL.createObjectURL(blob) }]);
   }, []);
 
   const toggleTorch = async () => {
@@ -75,7 +70,7 @@ export function CameraModal({ onClose, onComplete, onFallbackFiles }: CameraModa
     if (!track) return;
     const next = !torchOn;
     try {
-      await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] });
+      await setCameraTorch(track, next);
       setTorchOn(next);
     } catch {
       setTorchAvailable(false);

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createDefaultRecipe, createProject } from '../domain/defaults';
 import type { PageRecord } from '../domain/types';
-import { db, deleteProject, duplicateProject, getSource, listProjects, loadProject, saveProject, storeSource } from './database';
+import { db, deleteProject, deleteUnreferencedSources, duplicateProject, getSource, listProjects, loadProject, saveProject, storeSource } from './database';
 
 beforeEach(async () => {
   await db.transaction('rw', db.projects, db.pages, db.blobs, async () => {
@@ -61,6 +61,25 @@ describe('local project storage', () => {
       }],
     });
     await saveProject({ project, pages: [] });
+    await expect(getSource(sourceBlobId)).rejects.toThrow('could not be found');
+  });
+
+  it('keeps removed sources for undo until explicit cleanup', async () => {
+    const project = createProject('Undo delete');
+    const sourceBlobId = await storeSource(new Blob(['image'], { type: 'image/jpeg' }));
+    const page: PageRecord = {
+      id: crypto.randomUUID(), projectId: project.id, sourceBlobId, sourceKind: 'image', sourceName: 'page.jpg',
+      order: 0, width: 100, height: 200, recipe: createDefaultRecipe(), createdAt: 1,
+    };
+    await saveProject({ project, pages: [page] });
+
+    await saveProject({ project, pages: [] }, false);
+    await expect(getSource(sourceBlobId)).resolves.toBeDefined();
+    await saveProject({ project, pages: [page] }, false);
+    await expect(getSource(sourceBlobId)).resolves.toBeDefined();
+
+    await saveProject({ project, pages: [] }, false);
+    await deleteUnreferencedSources([sourceBlobId]);
     await expect(getSource(sourceBlobId)).rejects.toThrow('could not be found');
   });
 });

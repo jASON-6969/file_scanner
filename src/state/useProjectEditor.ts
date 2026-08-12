@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createDefaultRecipe, sanitizeFileName } from '../domain/defaults';
 import { normalizeOrder, reorderPages, rotateClockwise, updateSelectedPages } from '../domain/pageOperations';
 import type { EditRecipe, ExportSettings, PageRecord, ProjectBundle, ProjectRecord } from '../domain/types';
-import { loadProject, saveProject } from '../storage/database';
+import { deleteUnreferencedSources, loadProject, saveProject } from '../storage/database';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -32,7 +32,7 @@ export interface ProjectEditor {
   updateExportSettings: (settings: Partial<ExportSettings>) => void;
   undo: () => void;
   redo: () => void;
-  flushSave: () => Promise<void>;
+  flushSave: (cleanupRemovedSources?: boolean) => Promise<void>;
 }
 
 function clonePages(pages: PageRecord[]): PageRecord[] {
@@ -49,15 +49,21 @@ export function useProjectEditor(projectId: string): { editor: ProjectEditor | n
   const [error, setError] = useState<string | null>(null);
   const loaded = useRef(false);
   const latestBundle = useRef<ProjectBundle | null>(null);
+  const knownSourceIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
     loaded.current = false;
     loadProject(projectId)
       .then((result) => {
-        if (cancelled || !result) return;
+        if (cancelled) return;
+        if (!result) {
+          setError('This local project could not be found.');
+          return;
+        }
         setBundle(result);
         latestBundle.current = result;
+        knownSourceIds.current = new Set(result.pages.map((page) => page.sourceBlobId));
         const firstId = result.pages[0]?.id ?? null;
         setActiveId(firstId);
         setSelectedIds(firstId ? new Set([firstId]) : new Set());
@@ -74,10 +80,11 @@ export function useProjectEditor(projectId: string): { editor: ProjectEditor | n
 
   useEffect(() => {
     latestBundle.current = bundle;
+    bundle?.pages.forEach((page) => knownSourceIds.current.add(page.sourceBlobId));
     if (!bundle || !loaded.current) return;
     setSaveState('saving');
     const timer = window.setTimeout(() => {
-      saveProject(bundle)
+      saveProject(bundle, false)
         .then(() => setSaveState('saved'))
         .catch((reason) => {
           setSaveState('error');
@@ -229,8 +236,10 @@ export function useProjectEditor(projectId: string): { editor: ProjectEditor | n
     [activeId, bundle?.pages],
   );
 
-  const flushSave = useCallback(async () => {
-    if (latestBundle.current) await saveProject(latestBundle.current);
+  const flushSave = useCallback(async (cleanupRemovedSources = false) => {
+    if (!latestBundle.current) return;
+    await saveProject(latestBundle.current, false);
+    if (cleanupRemovedSources) await deleteUnreferencedSources([...knownSourceIds.current]);
   }, []);
 
   const editor = bundle ? {

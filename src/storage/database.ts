@@ -29,7 +29,7 @@ export async function loadProject(projectId: string): Promise<ProjectBundle | nu
   return { project, pages };
 }
 
-export async function saveProject(bundle: ProjectBundle): Promise<void> {
+export async function saveProject(bundle: ProjectBundle, cleanupRemovedSources = true): Promise<void> {
   const updated = { ...bundle.project, updatedAt: Date.now() };
   await db.transaction('rw', db.projects, db.pages, db.blobs, async () => {
     await db.projects.put(updated);
@@ -39,9 +39,11 @@ export async function saveProject(bundle: ProjectBundle): Promise<void> {
     const removedPages = removedIds.length ? await db.pages.bulkGet(removedIds) : [];
     if (removedIds.length) await db.pages.bulkDelete(removedIds);
     await db.pages.bulkPut(bundle.pages.map((page, order) => ({ ...page, order })));
-    for (const sourceId of new Set(removedPages.flatMap((page) => page ? [page.sourceBlobId] : []))) {
-      const references = await db.pages.where('sourceBlobId').equals(sourceId).count();
-      if (references === 0) await db.blobs.delete(sourceId);
+    if (cleanupRemovedSources) {
+      for (const sourceId of new Set(removedPages.flatMap((page) => page ? [page.sourceBlobId] : []))) {
+        const references = await db.pages.where('sourceBlobId').equals(sourceId).count();
+        if (references === 0) await db.blobs.delete(sourceId);
+      }
     }
   });
 }

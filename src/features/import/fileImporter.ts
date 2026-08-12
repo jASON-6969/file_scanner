@@ -140,3 +140,22 @@ export async function importFiles(
 export async function importCameraBlob(projectId: string, blob: Blob, order: number): Promise<PageRecord> {
   return createPage(projectId, blob, `Scan ${order + 1}`, 'camera', order);
 }
+
+export async function importCameraBlobs(
+  projectId: string,
+  blobs: Blob[],
+  startOrder: number,
+  onProgress?: ImportProgressHandler,
+): Promise<PageRecord[]> {
+  const pages: PageRecord[] = [];
+  try {
+    for (let index = 0; index < blobs.length; index += 1) {
+      onProgress?.({ current: index + 1, total: blobs.length, label: `Cleaning capture ${index + 1}` });
+      pages.push(await importCameraBlob(projectId, blobs[index], startOrder + index));
+    }
+  } catch (error) {
+    await deleteUnreferencedSources(pages.map((page) => page.sourceBlobId));
+    throw error;
+  }
+  return pages;
+}

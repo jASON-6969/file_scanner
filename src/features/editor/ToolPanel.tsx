@@ -1,6 +1,7 @@
-import { Crop, Files, Layers3, RotateCw, SlidersHorizontal, Sparkles, Trash2, Copy, ScanLine } from 'lucide-react';
+import { Crop, Layers3, RotateCw, SlidersHorizontal, Sparkles, ScanLine } from 'lucide-react';
 import type { EditRecipe, FilterPreset } from '../../domain/types';
 import type { ProjectEditor } from '../../state/useProjectEditor';
+import { PagesTool } from './PagesTool';
 
 export type ToolTab = 'crop' | 'filters' | 'adjust' | 'pages';
 
@@ -28,7 +29,16 @@ function RangeControl({ label, value, min, max, unit = '', onChange }: {
   );
 }
 
-export function ToolPanel({ editor, tab, onTab }: { editor: ProjectEditor; tab: ToolTab; onTab: (tab: ToolTab) => void }) {
+interface ToolPanelProps {
+  editor: ProjectEditor;
+  tab: ToolTab;
+  onTab: (tab: ToolTab) => void;
+  onScan: () => void;
+  onFiles: (files: File[]) => void;
+  importDisabled?: boolean;
+}
+
+export function ToolPanel({ editor, tab, onTab, onScan, onFiles, importDisabled }: ToolPanelProps) {
   const recipe = editor.activePage?.recipe;
   const tabs: Array<{ value: ToolTab; label: string; icon: typeof Crop }> = [
     { value: 'crop', label: 'Crop', icon: Crop },
@@ -48,7 +58,7 @@ export function ToolPanel({ editor, tab, onTab }: { editor: ProjectEditor; tab: 
           </button>
         ))}
       </div>
-      <div className="tool-content">
+      <div className={`tool-content ${tab === 'pages' ? 'pages-content' : ''}`}>
         {tab === 'crop' && (
           <div className="tool-section">
             <div className="tool-heading"><div><ScanLine size={18} /><strong>Page shape</strong></div><span>Drag the four corners</span></div>
@@ -76,22 +86,13 @@ export function ToolPanel({ editor, tab, onTab }: { editor: ProjectEditor; tab: 
           </div>
         )}
         {tab === 'pages' && (
-          <div className="tool-section page-actions">
-            <div className="selection-summary"><Files size={18} /><span>{editor.selectedIds.size} of {editor.pages.length} selected</span></div>
-            <div className="button-grid">
-              <button className="button secondary" onClick={editor.selectAll}>Select all</button>
-              <button className="button secondary" onClick={editor.clearSelection}>Select one</button>
-              <button className="button secondary" onClick={editor.duplicateSelected}><Copy size={17} /> Duplicate</button>
-              <button className="button secondary" onClick={editor.rotateSelected}><RotateCw size={17} /> Rotate</button>
-            </div>
-            <button className="button danger-button full" onClick={editor.removeSelected}><Trash2 size={17} /> Delete selected</button>
-          </div>
+          <PagesTool editor={editor} onScan={onScan} onFiles={onFiles} importDisabled={importDisabled} />
         )}
       </div>
-      <div className="tool-footer">
+      {tab !== 'pages' && <div className="tool-footer">
         <button onClick={editor.resetSelected}>Reset selected</button>
         <button onClick={editor.applyActiveToAll}>Apply page to all</button>
-      </div>
+      </div>}
     </aside>
   );
 }
