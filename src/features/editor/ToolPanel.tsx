@@ -1,16 +1,17 @@
 import { Crop, Layers3, RotateCw, SlidersHorizontal, Sparkles, ScanLine } from 'lucide-react';
 import type { EditRecipe, FilterPreset } from '../../domain/types';
 import type { ProjectEditor } from '../../state/useProjectEditor';
+import { FilterPreview } from './FilterPreview';
 import { PagesTool } from './PagesTool';
 
 export type ToolTab = 'crop' | 'filters' | 'adjust' | 'pages';
 
-const FILTERS: Array<{ value: FilterPreset; label: string; swatch: string }> = [
-  { value: 'original', label: 'Original', swatch: 'filter-original' },
-  { value: 'auto', label: 'Auto Clean', swatch: 'filter-auto' },
-  { value: 'color', label: 'Color', swatch: 'filter-color' },
-  { value: 'grayscale', label: 'Grayscale', swatch: 'filter-gray' },
-  { value: 'black-white', label: 'B & W', swatch: 'filter-bw' },
+const FILTERS: Array<{ value: FilterPreset; label: string }> = [
+  { value: 'original', label: 'Original' },
+  { value: 'auto', label: 'Auto Clean' },
+  { value: 'color', label: 'Color' },
+  { value: 'grayscale', label: 'Grayscale' },
+  { value: 'black-white', label: 'B & W' },
 ];
 
 function RangeControl({ label, value, min, max, unit = '', onChange }: {
@@ -71,7 +72,7 @@ export function ToolPanel({ editor, tab, onTab, onScan, onFiles, importDisabled 
             <div className="filter-grid">
               {FILTERS.map((filter) => (
                 <button key={filter.value} className={`filter-choice ${recipe.preset === filter.value ? 'is-active' : ''}`} onClick={() => patch('preset', filter.value)}>
-                  <span className={`filter-swatch ${filter.swatch}`} /><span>{filter.label}</span>
+                  <FilterPreview page={editor.activePage!} preset={filter.value} /><span>{filter.label}</span>
                 </button>
               ))}
             </div>

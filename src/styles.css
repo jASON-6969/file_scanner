@@ -217,13 +217,11 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .range-control output { color: var(--muted); font-size: 0.74rem; font-variant-numeric: tabular-nums; }
 .range-control input { width: 100%; accent-color: var(--accent); cursor: pointer; }
 .filter-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.filter-choice { min-width: 0; padding: 5px 5px 8px; display: grid; gap: 6px; border: 1px solid var(--line); border-radius: 5px; background: white; cursor: pointer; font-size: 0.66rem; }
+.filter-choice { min-width: 0; padding: 5px 5px 8px; display: grid; grid-template-rows: 72px auto; gap: 6px; border: 1px solid var(--line); border-radius: 5px; background: white; cursor: pointer; font-size: 0.66rem; }
 .filter-choice.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(23,107,85,0.13); color: var(--accent); font-weight: 700; }
-.filter-swatch { height: 44px; border-radius: 3px; background-color: #eef0e9; background-image: linear-gradient(90deg, transparent 15%, rgba(70,75,72,.18) 15%, rgba(70,75,72,.18) 18%, transparent 18%, transparent 80%, rgba(70,75,72,.12) 80%); }
-.filter-auto { background-color: #f8fbf9; filter: contrast(1.2); }
-.filter-color { background-color: #ddecf0; box-shadow: inset 0 -13px #f0dfbe; }
-.filter-gray { filter: grayscale(1); background-color: #d8dcda; }
-.filter-bw { background-color: white; box-shadow: inset 0 -20px #252925; }
+.filter-preview { width: 100%; height: 72px; display: grid; place-items: center; overflow: hidden; border-radius: 3px; background: #e8ecea; }
+.filter-preview img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.filter-preview-placeholder { width: 22px; height: 22px; border: 2px solid #c4ccc8; border-top-color: var(--accent); border-radius: 50%; animation: spin 850ms linear infinite; }
 .selection-summary { display: flex; gap: 9px; align-items: center; padding: 12px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 5px; font-size: 0.8rem; }
 .page-actions .button { padding: 0 8px; font-size: 0.75rem; }
 .pages-tool { height: 100%; min-height: 0; display: grid; grid-template-rows: 42px minmax(150px, 1fr) auto auto; }

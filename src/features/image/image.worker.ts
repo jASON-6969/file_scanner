@@ -4,6 +4,7 @@ import cvReady from '@techstark/opencv-js';
 import { FULL_CROP } from '../../domain/defaults';
 import { cropDimensions } from '../../domain/geometry';
 import type { CropQuad, EditRecipe, Point } from '../../domain/types';
+import { orderDocumentCorners, scoreDocumentQuad } from './documentDetection';
 
 interface RenderRequest {
   id: number;
@@ -39,17 +40,6 @@ interface DetectResponse {
 
 const worker = self as unknown as DedicatedWorkerGlobalScope;
 
-function orderCorners(points: Point[]): CropQuad {
-  const sum = points.map((point) => point.x + point.y);
-  const diff = points.map((point) => point.x - point.y);
-  return {
-    topLeft: points[sum.indexOf(Math.min(...sum))],
-    topRight: points[diff.indexOf(Math.max(...diff))],
-    bottomRight: points[sum.indexOf(Math.max(...sum))],
-    bottomLeft: points[diff.indexOf(Math.min(...diff))],
-  };
-}
-
 async function detectDocumentCorners(blob: Blob): Promise<CropQuad> {
   const bitmap = await createImageBitmap(blob);
   const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
@@ -65,42 +55,75 @@ async function detectDocumentCorners(blob: Blob): Promise<CropQuad> {
   const source = cv.matFromImageData(context.getImageData(0, 0, width, height));
   const gray = new cv.Mat();
   const blurred = new cv.Mat();
-  const edges = new cv.Mat();
-  const contours = new cv.MatVector();
-  const hierarchy = new cv.Mat();
-  let best: Point[] | null = null;
-  let bestArea = width * height * 0.1;
+  const candidates: Array<{ crop: CropQuad; score: number }> = [];
+
+  const collectCandidates = (binary: InstanceType<typeof cv.Mat>) => {
+    const contours = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+    try {
+      cv.findContours(binary, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+      for (let index = 0; index < contours.size(); index += 1) {
+        const contour = contours.get(index);
+        const perimeter = cv.arcLength(contour, true);
+        try {
+          for (const epsilon of [0.015, 0.02, 0.03, 0.04]) {
+            const polygon = new cv.Mat();
+            try {
+              cv.approxPolyDP(contour, polygon, perimeter * epsilon, true);
+              if (polygon.rows !== 4 || !cv.isContourConvex(polygon)) continue;
+              const crop = orderDocumentCorners(Array.from({ length: 4 }, (_, pointIndex): Point => ({
+                x: polygon.data32S[pointIndex * 2] / width,
+                y: polygon.data32S[pointIndex * 2 + 1] / height,
+              })));
+              const score = scoreDocumentQuad(crop);
+              if (Number.isFinite(score)) candidates.push({ crop, score });
+              break;
+            } finally {
+              polygon.delete();
+            }
+          }
+        } finally {
+          contour.delete();
+        }
+      }
+    } finally {
+      contours.delete();
+      hierarchy.delete();
+    }
+  };
 
   try {
     cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
     cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
-    cv.Canny(blurred, edges, 60, 180);
-    cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-    for (let index = 0; index < contours.size(); index += 1) {
-      const contour = contours.get(index);
-      const perimeter = cv.arcLength(contour, true);
-      const polygon = new cv.Mat();
-      cv.approxPolyDP(contour, polygon, perimeter * 0.02, true);
-      const area = Math.abs(cv.contourArea(polygon));
-      if (polygon.rows === 4 && cv.isContourConvex(polygon) && area > bestArea) {
-        bestArea = area;
-        best = Array.from({ length: 4 }, (_, pointIndex) => ({
-          x: polygon.data32S[pointIndex * 2] / width,
-          y: polygon.data32S[pointIndex * 2 + 1] / height,
-        }));
+
+    for (const [low, high] of [[35, 105], [60, 180], [90, 240]]) {
+      const edges = new cv.Mat();
+      const closed = new cv.Mat();
+      const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+      try {
+        cv.Canny(blurred, edges, low, high);
+        cv.morphologyEx(edges, closed, cv.MORPH_CLOSE, kernel);
+        collectCandidates(closed);
+      } finally {
+        edges.delete();
+        closed.delete();
+        kernel.delete();
       }
-      polygon.delete();
-      contour.delete();
+    }
+
+    const threshold = new cv.Mat();
+    try {
+      cv.adaptiveThreshold(blurred, threshold, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, 7);
+      collectCandidates(threshold);
+    } finally {
+      threshold.delete();
     }
   } finally {
     source.delete();
     gray.delete();
     blurred.delete();
-    edges.delete();
-    contours.delete();
-    hierarchy.delete();
   }
-  return best ? orderCorners(best) : structuredClone(FULL_CROP);
+  return candidates.sort((first, second) => second.score - first.score)[0]?.crop ?? structuredClone(FULL_CROP);
 }
 
 async function perspectiveCrop(imageData: ImageData, crop: CropQuad, maxDimension: number): Promise<ImageData> {
