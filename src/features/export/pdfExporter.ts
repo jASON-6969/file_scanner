@@ -79,3 +79,30 @@ export function downloadPdf(blob: Blob, fileName: string): void {
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+function createPdfFile(blob: Blob, fileName: string): File {
+  return new File([blob], `${fileName || 'document'}.pdf`, { type: 'application/pdf' });
+}
+
+function canShareFile(file: File): boolean {
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') {
+    return false;
+  }
+
+  try {
+    return navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
+export function canSharePdf(): boolean {
+  if (typeof File === 'undefined') return false;
+  return canShareFile(createPdfFile(new Blob([], { type: 'application/pdf' }), 'document'));
+}
+
+export async function sharePdf(blob: Blob, fileName: string): Promise<void> {
+  const file = createPdfFile(blob, fileName);
+  if (!canShareFile(file)) throw new Error('PDF file sharing is not supported by this browser.');
+  await navigator.share({ files: [file], title: file.name });
+}

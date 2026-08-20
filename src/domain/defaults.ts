@@ -12,7 +12,7 @@ export function createDefaultRecipe(): EditRecipe {
     rotation: 0,
     straighten: 0,
     crop: structuredClone(FULL_CROP),
-    preset: 'auto',
+    preset: 'black-white',
     intensity: 86,
     brightness: 2,
     contrast: 14,

@@ -1,9 +1,9 @@
-import { ArrowLeft, CheckCircle2, Download, FileCheck2, HardDrive, LoaderCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Download, FileCheck2, HardDrive, LoaderCircle, Share2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { sanitizeFileName } from '../../domain/defaults';
 import type { ExportSettings, PageRecord, ProjectRecord } from '../../domain/types';
 import { usePagePreview } from '../../hooks/usePagePreview';
-import { downloadPdf, exportPdf, type ExportProgress } from '../export/pdfExporter';
+import { canSharePdf, downloadPdf, exportPdf, sharePdf, type ExportProgress } from '../export/pdfExporter';
 
 interface CompletionPageProps {
   project: ProjectRecord;
@@ -26,25 +26,54 @@ function CompletionThumbnail({ page, index }: { page: PageRecord; index: number 
 export function CompletionPage({ project, pages, onSettings, onBackToEditing, onSaveLocal }: CompletionPageProps) {
   const settings = project.exportSettings;
   const controller = useRef<AbortController | null>(null);
+  const preparedPdf = useRef<{ blob: Blob; pages: PageRecord[]; settings: ExportSettings } | null>(null);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [complete, setComplete] = useState(false);
+  const [complete, setComplete] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const startExport = async () => {
-    controller.current = new AbortController();
+  const preparePdf = async (signal: AbortSignal) => {
+    if (preparedPdf.current?.pages === pages && preparedPdf.current.settings === settings) {
+      return preparedPdf.current.blob;
+    }
+
+    const blob = await exportPdf(pages, settings, signal, setProgress);
+    preparedPdf.current = { blob, pages, settings };
+    return blob;
+  };
+
+  const runPdfAction = async (action: 'download' | 'share') => {
+    if (action === 'share' && !canSharePdf()) {
+      setComplete(null);
+      setError('PDF file sharing is not supported by this browser.');
+      return;
+    }
+
+    const abortController = new AbortController();
+    controller.current = abortController;
     setError(null);
-    setComplete(false);
+    setComplete(null);
+    setProgress({ current: 0, total: pages.length, label: 'Preparing PDF' });
     try {
-      const blob = await exportPdf(pages, settings, controller.current.signal, setProgress);
-      downloadPdf(blob, sanitizeFileName(settings.fileName));
-      setComplete(true);
+      const blob = await preparePdf(abortController.signal);
+      const fileName = sanitizeFileName(settings.fileName);
+      if (action === 'download') {
+        downloadPdf(blob, fileName);
+        setComplete('PDF downloaded successfully.');
+      } else {
+        await sharePdf(blob, fileName);
+        setComplete('PDF shared successfully.');
+      }
     } catch (reason) {
-      if (reason instanceof DOMException && reason.name === 'AbortError') setError('Export cancelled.');
+      if (abortController.signal.aborted) setError('Export cancelled.');
+      else if (action === 'share' && reason instanceof DOMException && reason.name === 'AbortError') setError(null);
+      else if (action === 'share' && reason instanceof DOMException && reason.name === 'NotAllowedError') {
+        setError('The PDF is ready. Tap Share PDF again to open your phone share menu.');
+      }
       else setError(reason instanceof Error ? reason.message : 'The PDF could not be exported.');
     } finally {
       setProgress(null);
-      controller.current = null;
+      if (controller.current === abortController) controller.current = null;
     }
   };
 
@@ -98,7 +127,7 @@ export function CompletionPage({ project, pages, onSettings, onBackToEditing, on
               <progress value={progress.current} max={progress.total} />
             </div>
           )}
-          {complete && <div className="success-message"><CheckCircle2 size={18} /> PDF downloaded successfully.</div>}
+          {complete && <div className="success-message"><CheckCircle2 size={18} /> {complete}</div>}
           {error && <div className="inline-error">{error}</div>}
 
           <div className="finish-actions">
@@ -112,10 +141,17 @@ export function CompletionPage({ project, pages, onSettings, onBackToEditing, on
             >
               <HardDrive size={18} /> {saving ? 'Saving' : 'Save locally'}
             </button>
+            <button
+              className="button secondary share-pdf-button"
+              disabled={Boolean(progress) || !pages.length || !settings.fileName.trim()}
+              onClick={() => runPdfAction('share')}
+            >
+              <Share2 size={18} /> Share PDF
+            </button>
             {progress ? (
               <button className="button primary" onClick={() => controller.current?.abort()}>Cancel export</button>
             ) : (
-              <button className="button primary" onClick={startExport} disabled={!pages.length || !settings.fileName.trim()}>
+              <button className="button primary" onClick={() => runPdfAction('download')} disabled={!pages.length || !settings.fileName.trim()}>
                 <Download size={18} /> Export PDF
               </button>
             )}

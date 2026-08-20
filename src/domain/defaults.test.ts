@@ -11,9 +11,9 @@ describe('document defaults', () => {
     });
   });
 
-  it('starts with a non-destructive auto-clean recipe', () => {
+  it('starts with a black-and-white recipe', () => {
     const recipe = createDefaultRecipe();
-    expect(recipe.preset).toBe('auto');
+    expect(recipe.preset).toBe('black-white');
     expect(recipe.crop.bottomRight).toEqual({ x: 1, y: 1 });
     expect(recipe.rotation).toBe(0);
     expect(recipe.intensity).toBe(86);
