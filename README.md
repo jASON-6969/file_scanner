@@ -2,6 +2,12 @@
 
 Clearfile is a mobile-first, on-device document scanner and PDF cleanup app. Images, imported PDF pages, edit recipes, and named projects remain in the browser's IndexedDB; the app has no backend or analytics.
 
+## Preview
+
+[![Open the Clearfile live demo](docs/preview.png)](https://file-scanner-rosy.vercel.app/)
+
+Try it live: [file-scanner-rosy.vercel.app](https://file-scanner-rosy.vercel.app/)
+
 ## Included
 
 - Continuous rear-camera capture with a system file-picker fallback
